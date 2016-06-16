@@ -57,6 +57,16 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
                     "lookup_data": false,
                     "hit_test": true
                 },
+		"element_hover_over": {
+		    "msg_name": "element_hover_over",
+		    "lookup_data": false,
+		    "hit_test": true
+		},
+                "element_hover_out": {
+	            "msg_name": "element_hover_out",
+                    "lookup_data": false,
+                    "hit_test": true
+		},
                 "parent_clicked": {
                     "msg_name": "background_click",
                     "hit_test": false
@@ -466,7 +476,14 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
                 this.event_dispatcher("element_clicked",
 				      {"data": d, "index": i});
             }, this));
-
+	    elements.on("mouseover", _.bind(function(d, i) {
+		this.event_dispatcher("element_hover_over",
+			              {"data": d, "index": i});
+	    }, this));
+	    elements.on("mouseout", _.bind(function(d, i) {
+		this.event_dispatcher("element_hover_out",
+			              {"data": d, "index": i});
+	    }, this));	
             var names = this.model.get_typed_field("names"),
                 text_loc = Math.sqrt(this.model.get("default_size")) / 2.0,
                 show_names = (this.model.get("display_names") && names.length !== 0);
@@ -506,7 +523,7 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
                     }
 		    else if (interactions.click == 'select') {
        		        this.event_listeners.parent_clicked = this.reset_selection;
-			this.event_listeners.element_clicked = this.scatter_click_handler;
+			this.event_listeners.element_clicked = this.scatter_select_handler;
 		    }
                 } else {
                     this.reset_click();
@@ -518,6 +535,12 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
                         this.event_listeners.mouse_move = this.show_tooltip;
                         this.event_listeners.mouse_out = this.hide_tooltip;
                     }
+		    else if (interactions.hover === 'select') {
+			if (interactions.click !== 'select') {
+			    this.event_listeners.element_hover_over = this.scatter_select_handler;
+			    this.event_listeners.element_hover_out = this.reset_selection;
+			}
+		    }	
                 } else {
                     this.reset_hover();
                 }
@@ -550,7 +573,7 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
             this.touch();
         },
 
-	scatter_click_handler: function(args) {
+	scatter_select_handler: function(args) {
             var data = args.data;
             var index = args.index;
             var that = this;
@@ -727,6 +750,19 @@ define(["d3", "./Mark", "./utils", "./Markers", "underscore"],
         update_selected: function(model, value) {
             this.selected_indices = value;
             this.apply_styles();
+        },
+
+        apply_styles: function() {
+            var all_indices = _.range(this.model.mark_data.length);
+            this.clear_style(this.selected_style);
+            this.clear_style(this.unselected_style);
+
+            this.set_default_style(all_indices);
+
+            this.set_style_on_elements(this.selected_style, this.selected_indices);
+            var unselected_indices = (!this.selected_indices) ?
+                [] : _.difference(all_indices, this.selected_indices);
+            this.set_style_on_elements(this.unselected_style, unselected_indices);
         },
 
         set_style_on_elements: function(style, indices) {
