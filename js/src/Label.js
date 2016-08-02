@@ -16,6 +16,8 @@
 var d3 = require("d3");
 var mark = require("./Mark");
 
+var min_size = 6;
+
 var Label = mark.Mark.extend({
     render: function() {
         var base_render_promise = Label.__super__.render.apply(this);
@@ -26,7 +28,7 @@ var Label = mark.Mark.extend({
         //created. Make sure none of the event handler functions make that
         //assumption.
         this.drag_listener = d3.behavior.drag()
-          .origin(function(d, i) { return that.drag_start(d, i, this); })
+          .on("dragstart", function(d, i) { return that.drag_start(d, i, this); })
           .on("drag", function(d, i) { return that.on_drag(d, i, this); })
           .on("dragend", function(d, i) { return that.drag_ended(d, i, this); });
         return base_render_promise.then(function() {
@@ -57,8 +59,8 @@ var Label = mark.Mark.extend({
             // I don't know how to handle for ordinal scale.
             var size_domain = size_scale.scale.domain();
             var ratio = d3.min(size_domain) / d3.max(size_domain);
-            size_scale.set_range([d3.max([(this.model.get("default_size") * ratio), min_size]),
-                                 this.model.get("default_size")]);
+            size_scale.set_range([d3.max([(this.model.get("font_size") * ratio), min_size]),
+                                 this.model.get("font_size")]);
         }
         if(rotation_scale) {
             rotation_scale.set_range([0, 180]);
@@ -122,7 +124,7 @@ var Label = mark.Mark.extend({
         this.listenTo(this.model, "change:default_size", this.update_default_size, this);
         this.listenTo(this.model, "change:tooltip", this.create_tooltip, this);
         this.model.on_some_change(["font_weight", "font_size", "colors",
-                                   "align"], this.update_style, this);
+                                   "align", "font_unit"], this.update_style, this);
         this.model.on_some_change(["x", "y", "x_offset", "y_offset",
                                    "rotate_angle"], this.update_position, this);
     },
@@ -162,15 +164,16 @@ var Label = mark.Mark.extend({
 
     get_element_size: function(data) {
         var size_scale = this.scales.size;
+        var unit = this.model.get("font_unit");
         if(size_scale && data.size !== undefined) {
-            return size_scale.scale(data.size);
+            return size_scale.scale(data.size) + unit;
         }
-        return this.model.get("font_size");
+        return this.model.get("font_size") + unit;
     },
 
     get_element_rotation: function(data) {
         var rotation_scale = this.scales.rotation;
-        return (!rotation_scale || !d.rotation) ? "rotate(" + this.model.get("rotate_angle") + ")" :
+        return (!rotation_scale || !data.rotation) ? "rotate(" + this.model.get("rotate_angle") + ")" :
             "rotate(" + rotation_scale.scale(data.rotation) + ")";
     },
 
@@ -212,6 +215,7 @@ var Label = mark.Mark.extend({
     update_style: function() {
         var that = this;
         this.el.selectAll(".object_grp")
+            .select("text")
             .style("font-size", function(d, i) {
                 return that.get_element_size(d);
             })
@@ -238,30 +242,59 @@ var Label = mark.Mark.extend({
     },
 
     set_drag_behavior: function() {
-        var label = this.el.selectAll(".label");
+        var labels = this.el.selectAll(".object_grp");
         if (this.model.get("enable_move")) {
-            label.call(this.drag_listener);
+            labels.call(this.drag_listener);
         }
         else { 
-            label.on(".drag", null); 
+            labels.on(".drag", null); 
         }
     },
 
     drag_start: function(d, i, dragged_node) {
-        var transform = d3.transform(dragged_node.attr("transform"));
-        return {x: transform.translate[0], y: transform.translate[1]};
+        // d[0] and d[1] will contain the previous position (in pixels)
+        // of the dragged point, for the length of the drag event
+        var x_scale = this.x_scale, y_scale = this.y_scale;
+        var font_size = this.model.get("font_size") + this.model.get("font_unit");
+        d[0] = x_scale.scale(d.x) + x_scale.offset;
+        d[1] = y_scale.scale(d.y) + y_scale.offset;
+
+        d3.select(dragged_node)
+          .select("text")
+          .classed("drag_label", true)
+          .transition()
+          .attr("font-size", (1.15 * font_size));
+
+        this.send({
+            event: "drag_start",
+            point: {x : d.x, y: d.y},
+            index: i
+        });
     },
 
     on_drag: function(d, i, dragged_node) {
-        var x_scale = this.scales.x, y_scale = this.scales.y;
-
-        d[0] = d3.event.x; 
-        d[1] = d3.event.y;
+        var x_scale = this.x_scale, y_scale = this.y_scale;
+        // If restrict_x is true, then the move is restricted only to the X
+        // direction.
+        var restrict_x = this.model.get("restrict_x"),
+            restrict_y = this.model.get("restrict_y");
+        if (restrict_x && restrict_y) { return; }
+        if (!restrict_x) { d[0] = d3.event.x; }
+        if (!restrict_y) { d[1] = d3.event.y; }
 
         d3.select(dragged_node)
           .attr("transform", function() {
               return "translate(" + d[0] + "," + d[1] + ")";
           });
+        this.send({
+            event: "drag",
+            origin: {x: d.x, y: d.y},
+            point: {
+                x: x_scale.invert(d[0]), 
+                y: y_scale.invert(d[1])
+            },
+            index: i
+        });
         if(this.model.get("update_on_move")) {
             // saving on move if flag is set
             this.update_array(d, i);
@@ -271,29 +304,49 @@ var Label = mark.Mark.extend({
     drag_ended: function(d, i, dragged_node) {
         var stroke = this.model.get("stroke"),
             original_color = this.get_element_color(d, i),
-            x_scale = this.scales.x,
-            y_scale = this.scales.y;
+            x_scale = this.x_scale,
+            y_scale = this.y_scale;
 
         d3.select(dragged_node)
-          .select("path")
-          .classed("drag_scatter", false)
+          .select("text")
+          .classed("drag_label", false)
           .transition()
-          .attr("d", this.dot.size(this.get_element_size(d)));
+          .attr("font-size", this.get_element_size(d));
 
-        if (this.model.get("drag_color")) {
-            d3.select(dragged_node)
-              .select("path")
-              .style("fill", original_color)
-              .style("stroke", stroke ? stroke : original_color);          
-        }
         this.update_array(d, i);
         this.send({
             event: "drag_end",
-            point: {x: x_scale.invert(d[0]), 
-                    y: y_scale.invert(d[1])},
+            point: {
+                x: x_scale.invert(d[0]), 
+                y: y_scale.invert(d[1])
+            },
             index: i
         });
-    }
+    },
+
+    update_array: function(d, i) {
+        var x_scale = this.x_scale,
+            y_scale = this.y_scale;
+
+        if (!this.model.get("restrict_y")){
+            var x_data = [];
+            this.model.get_typed_field("x").forEach(function(elem) {
+                x_data.push(elem);
+            });
+            x_data[i] = x_scale.scale.invert(d[0]);
+            this.model.set_typed_field("x", x_data);
+        }
+        if (!this.model.get("restrict_x")){
+            var y_data = [];
+            this.model.get_typed_field("y").forEach(function(elem) {
+                y_data.push(elem);
+            });
+            y_data[i] = y_scale.scale.invert(d[1]);
+            this.model.set_typed_field("y", y_data);
+        }
+        this.touch();
+    },
+
 });
 
 module.exports = {

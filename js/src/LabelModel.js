@@ -39,9 +39,14 @@ var LabelModel = markmodel.MarkModel.extend({
         colors: null,
         rotate_angle: 0.0,
         text: [],
-        font_size: "14px",
+        font_size: 16.0,
+        font_unit: "px",
         font_weight: "bold",
-        align: "start"
+        align: "start",
+        enable_move: false,
+        restrict_x: false,
+        restrict_y: false,
+        update_on_move: false
     }),
 
     initialize: function() {
