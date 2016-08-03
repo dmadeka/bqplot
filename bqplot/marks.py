@@ -419,8 +419,184 @@ class FlexLine(Mark):
     _model_name = Unicode('FlexLineModel').tag(sync=True)
 
 
+@register_mark('bqplot.Objects')
+class Objects(Mark):
+
+    """Object mark.
+
+    Attributes
+    ----------
+    icon: string (class-level attribute)
+        Font-awesome icon for that mark
+    name: string (class-level attribute)
+        User-friendly name of the mark
+    marker: {'circle', 'cross', 'diamond', 'square', 'triangle-down', 'triangle-up', 'arrow', 'rectangle', 'ellipse'}
+        Marker shape
+    default_colors: list of colors (default: ['DeepSkyBlue'])
+        List of colors of the markers. If the list is shorter than the number
+        of points, the colors are reused.
+    stroke: Color or None (default: None)
+        Stroke color of the marker
+    stroke_width: Float (default: 1.5)
+        Stroke width of the marker
+    default_opacities: list of floats (default: [1.0])
+        Default opacities of the markers. If the list is shorter than the number
+        of points, the opacities are reused.
+    default_skew: float (default: 0.5)
+        Default skew of the marker.
+        This number is validated to be between 0 and 1.
+    default_size: nonnegative int (default: 64)
+        Default marker size in pixel.
+        If size data is provided with a scale, default_size stands for the
+        maximal marker size (i.e. the maximum value for the 'size' scale range)
+    names: numpy.ndarray (default: [])
+        Labels for the points of the chart
+    display_names: bool (default: True)
+        Controls whether names are displayed for points in the scatter
+
+    Data Attributes
+
+    x: numpy.ndarray (default: [])
+        abscissas of the data points (1d array)
+    y: numpy.ndarray (default: [])
+        ordinates of the data points (1d array)
+    color: numpy.ndarray or None (default: [])
+        color of the data points (1d array). Defaults to default_color when not
+        provided or when a value is NaN
+    opacity: numpy.ndarray or None (default: [])
+        opacity of the data points (1d array). Defaults to default_opacity when
+        not provided or when a value is NaN
+    size: numpy.ndarray or None (default: [])
+        size of the data points. Defaults to default_size when not provided or
+        when a value is NaN
+    skew: numpy.ndarray or None (default: [])
+        skewness of the markers representing the data points. Defaults to
+        default_skew when not provided or when a value is NaN
+    rotation: numpy.ndarray or None (default: [])
+        orientation of the markers representing the data points.
+        The rotation scale's range is [0, 180]
+        Defaults to 0 when not provided or when a value is NaN.
+
+    Notes
+    -----
+    The fields which can be passed to the default tooltip are:
+        All the data attributes
+        index: index of the marker being hovered on
+    The following are the events which can trigger interactions:
+        click: left click of the mouse
+        hover: mouse-over an element
+    The following are the interactions which can be linked to the above events:
+        tooltip: display tooltip
+        add: add new points to the scatter (can only linked to click)
+    """
+
+    x = NdArray().tag(sync=True, min_dim=1, max_dim=1, atype='bqplot.Axis')
+    y = NdArray().tag(sync=True, min_dim=1, max_dim=1, atype='bqplot.Axis')
+    color = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
+                rtype='Color', atype='bqplot.ColorAxis', min_dim=1, max_dim=1)
+    size = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
+                   rtype='Number', min_dim=1, max_dim=1)
+    rotation = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
+                       rtype='Number', min_dim=1, max_dim=1)
+    opacity = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
+                      rtype='Number', min_dim=1, max_dim=1)
+    scales_metadata = Dict({
+        'x': {'orientation': 'horizontal', 'dimension': 'x'},
+        'y': {'orientation': 'vertical', 'dimension': 'y'},
+        'color': {'dimension': 'color'},
+        'size': {'dimension': 'size'},
+        'opacity': {'dimension': 'opacity'}
+    }).tag(sync=True)
+    default_colors = List(trait=Color(default_value=None, allow_none=True),
+                          default_value=['DeepSkyBlue']).tag(sync=True,
+                          display_name='Colors')
+    default_opacities = List(trait=Float(1.0, min=0, max=1, allow_none=True)).tag(sync=True, display_name='Opacities')
+    drag_color = Color(None, allow_none=True).tag(sync=True)
+
+    enable_move = Bool().tag(sync=True)
+    restrict_x = Bool().tag(sync=True)
+    restrict_y = Bool().tag(sync=True)
+    update_on_move = Bool().tag(sync=True)
+
+    def __init__(self, **kwargs):
+        self._drag_start_handlers = CallbackDispatcher()
+        self._drag_handlers = CallbackDispatcher()
+        self._drag_end_handlers = CallbackDispatcher()
+        super(Objects, self).__init__(**kwargs)
+
+    def on_drag_start(self, callback, remove=False):
+        self._drag_start_handlers.register_callback(callback, remove=remove)
+
+    def on_drag(self, callback, remove=False):
+        self._drag_handlers.register_callback(callback, remove=remove)
+
+    def on_drag_end(self, callback, remove=False):
+        self._drag_end_handlers.register_callback(callback, remove=remove)
+
+    def _handle_custom_msgs(self, _, content, buffers=None):
+        event = content.get('event', '')
+
+        if event == 'drag_start':
+            self._drag_start_handlers(self, content)
+        elif event == 'drag':
+            self._drag_handlers(self, content)
+        elif event == 'drag_end':
+            self._drag_end_handlers(self, content)
+
+        super(Objects, self)._handle_custom_msgs(self, content)
+
+    _view_name = Unicode('Objects').tag(sync=True)
+    _model_name = Unicode('ObjectsModel').tag(sync=True)
+
+
+@register_mark('bqplot.Label')
+class Label(Objects):
+
+    """Label mark.
+
+    Attributes
+    ----------
+    x: Date or float
+        horizontal position of the label, in data coordinates or in figure
+        coordinates
+    y: float or None (default: None)
+        vertical y position of the label, in data coordinates or in figure
+        coordinates
+    x_offset: int (default: 0)
+        horizontal offset in pixels from the stated x location
+    y_offset: int (default: 0)
+        vertical offset in pixels from the stated y location
+    colors: List of colors (default: CATEGORY10)
+        label colors
+    rotate_angle: float (default: 0.0)
+        angle by which the text is to be rotated
+    text: string (default: '')
+        text to be displayed
+    font_size: string (default: '14px')
+        font size in px, em or ex
+    font_weight: {'bold', 'normal', 'bolder'}
+        font weight of the caption
+    align: {'start', 'middle', 'end'}
+        alignment of the text with respect to the provided location
+    enable_move: Bool
+        Enable the label to be moved by dragging
+    """
+    x_offset = Int().tag(sync=True)
+    y_offset = Int().tag(sync=True)
+    colors = List(trait=Color(default_value=None, allow_none=True), default_value=CATEGORY10).tag(sync=True, display_name='Colors')
+    rotate_angle = Float().tag(sync=True)
+    text = NdArray().tag(sync=True)
+    font_size = Float(16.).tag(sync=True)
+    font_unit = Enum(['px', 'em', 'pt', '%'], default_value='px').tag(sync=True)
+    font_weight = Enum(['bold', 'normal', 'bolder'], default_value='bold').tag(sync=True)
+    align = Enum(['start', 'middle', 'end'], default_value='start').tag(sync=True)
+    
+    _view_name = Unicode('Label').tag(sync=True)
+    _model_name = Unicode('LabelModel').tag(sync=True)
+
+
 @register_mark('bqplot.Scatter')
-class Scatter(Mark):
+class Scatter(Objects):
 
     """Scatter mark.
 
@@ -499,82 +675,28 @@ class Scatter(Mark):
     name = 'Scatter'
 
     # Scaled attribtes
-    x = NdArray().tag(sync=True, min_dim=1, max_dim=1, scaled=True,
-                rtype='Number', atype='bqplot.Axis')
-    y = NdArray().tag(sync=True, min_dim=1, max_dim=1,
-                scaled=True, rtype='Number', atype='bqplot.Axis')
-    color = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                    rtype='Color', atype='bqplot.ColorAxis', min_dim=1, max_dim=1)
-    opacity = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                      rtype='Number', min_dim=1, max_dim=1)
-    size = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                   rtype='Number', min_dim=1, max_dim=1)
     skew = NdArray(None, allow_none=True).tag(sync=True, scaled=True, rtype='Number',
                    min_dim=1, max_dim=1)
-    rotation = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                       rtype='Number', min_dim=1, max_dim=1)
     hovered_style = Dict().tag(sync=True)
     unhovered_style = Dict().tag(sync=True)
     hovered_point = Int(None, allow_none=True).tag(sync=True)
 
     # Other attributes
-    scales_metadata = Dict({
-        'x': {'orientation': 'horizontal', 'dimension': 'x'},
-        'y': {'orientation': 'vertical', 'dimension': 'y'},
-        'color': {'dimension': 'color'},
-        'size': {'dimension': 'size'},
-        'opacity': {'dimension': 'opacity'}
-    }).tag(sync=True)
+
     marker = Enum(['circle', 'cross', 'diamond', 'square', 'triangle-down',
                    'triangle-up', 'arrow', 'rectangle', 'ellipse'],
                   default_value='circle').tag(sync=True, display_name='Marker')
-    default_colors = List(trait=Color(default_value=None, allow_none=True),
-                          default_value=['DeepSkyBlue']).tag(sync=True,
-                          display_name='Colors')
+
     stroke = Color(None, allow_none=True).tag(sync=True, display_name='Stroke color')
     stroke_width = Float(1.5).tag(sync=True, display_name='Stroke width')
-    default_opacities = List(trait=Float(1.0, min=0, max=1, allow_none=True)).tag(sync=True, display_name='Opacities')
     default_skew = Float(0.5, min=0, max=1).tag(sync=True)
     default_size = Int(64).tag(sync=True, display_name='Default size')
 
     names = NdArray().tag(sync=True)
     display_names = Bool(True).tag(sync=True, display_name='Display names')
     fill = Bool(True).tag(sync=True)
-    drag_color = Color(None, allow_none=True).tag(sync=True)
+
     names_unique = Bool(True).tag(sync=True)
-
-    enable_move = Bool().tag(sync=True)
-    enable_delete = Bool().tag(sync=True)
-    restrict_x = Bool().tag(sync=True)
-    restrict_y = Bool().tag(sync=True)
-    update_on_move = Bool().tag(sync=True)
-
-    def __init__(self, **kwargs):
-        self._drag_start_handlers = CallbackDispatcher()
-        self._drag_handlers = CallbackDispatcher()
-        self._drag_end_handlers = CallbackDispatcher()
-        super(Scatter, self).__init__(**kwargs)
-
-    def on_drag_start(self, callback, remove=False):
-        self._drag_start_handlers.register_callback(callback, remove=remove)
-
-    def on_drag(self, callback, remove=False):
-        self._drag_handlers.register_callback(callback, remove=remove)
-
-    def on_drag_end(self, callback, remove=False):
-        self._drag_end_handlers.register_callback(callback, remove=remove)
-
-    def _handle_custom_msgs(self, _, content, buffers=None):
-        event = content.get('event', '')
-
-        if event == 'drag_start':
-            self._drag_start_handlers(self, content)
-        elif event == 'drag':
-            self._drag_handlers(self, content)
-        elif event == 'drag_end':
-            self._drag_end_handlers(self, content)
-
-        super(Scatter, self)._handle_custom_msgs(self, content)
 
     _view_name = Unicode('Scatter').tag(sync=True)
     _model_name = Unicode('ScatterModel').tag(sync=True)
@@ -797,100 +919,6 @@ class Bars(Mark):
 
     _view_name = Unicode('Bars').tag(sync=True)
     _model_name = Unicode('BarsModel').tag(sync=True)
-
-
-@register_mark('bqplot.Label')
-class Label(Mark):
-
-    """Label mark.
-
-    Attributes
-    ----------
-    x: Date or float
-        horizontal position of the label, in data coordinates or in figure
-        coordinates
-    y: float or None (default: None)
-        vertical y position of the label, in data coordinates or in figure
-        coordinates
-    x_offset: int (default: 0)
-        horizontal offset in pixels from the stated x location
-    y_offset: int (default: 0)
-        vertical offset in pixels from the stated y location
-    color: Color or None (default: None)
-        label color
-    rotate_angle: float (default: 0.0)
-        angle by which the text is to be rotated
-    text: string (default: '')
-        text to be displayed
-    font_size: string (default: '14px')
-        font size in px, em or ex
-    font_weight: {'bold', 'normal', 'bolder'}
-        font weight of the caption
-    align: {'start', 'middle', 'end'}
-        alignment of the text with respect to the provided location
-    enable_move: Bool
-        Enable the label to be moved by dragging
-    """
-    x = NdArray().tag(sync=True, min_dim=1, max_dim=1, atype='bqplot.Axis')
-    y = NdArray().tag(sync=True, min_dim=1, max_dim=1, atype='bqplot.Axis')
-    color = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                rtype='Color', atype='bqplot.ColorAxis', min_dim=1, max_dim=1)
-    size = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                   rtype='Number', min_dim=1, max_dim=1)
-    rotation = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                       rtype='Number', min_dim=1, max_dim=1)
-    opacity = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
-                      rtype='Number', min_dim=1, max_dim=1)
-    x_offset = Int().tag(sync=True)
-    y_offset = Int().tag(sync=True)
-    scales_metadata = Dict({
-        'x': { 'orientation': 'horizontal', 'dimension': 'x' },
-        'y': { 'orientation': 'vertical', 'dimension': 'y' },
-        'color': { 'dimension': 'color' }
-    }).tag(sync=True)
-    colors = List(trait=Color(default_value=None, allow_none=True), default_value=CATEGORY10).tag(sync=True, display_name='Colors')
-    default_opacities = List(trait=Float(1.0, min=0, max=1, allow_none=True)).tag(sync=True, display_name='Opacities')
-    rotate_angle = Float().tag(sync=True)
-    text = NdArray().tag(sync=True)
-    font_size = Float(16.).tag(sync=True)
-    font_unit = Enum(['px', 'em', 'pt', '%'], default_value='px').tag(sync=True)
-    font_weight = Enum(['bold', 'normal', 'bolder'], default_value='bold').tag(sync=True)
-    align = Enum(['start', 'middle', 'end'], default_value='start').tag(sync=True)
-
-    enable_move = Bool().tag(sync=True)
-    restrict_x = Bool().tag(sync=True)
-    restrict_y = Bool().tag(sync=True)
-    update_on_move = Bool().tag(sync=True)
-
-    def __init__(self, **kwargs):
-        self._drag_start_handlers = CallbackDispatcher()
-        self._drag_handlers = CallbackDispatcher()
-        self._drag_end_handlers = CallbackDispatcher()
-        super(Label, self).__init__(**kwargs)
-
-    def on_drag_start(self, callback, remove=False):
-        self._drag_start_handlers.register_callback(callback, remove=remove)
-
-    def on_drag(self, callback, remove=False):
-        self._drag_handlers.register_callback(callback, remove=remove)
-
-    def on_drag_end(self, callback, remove=False):
-        self._drag_end_handlers.register_callback(callback, remove=remove)
-
-    def _handle_custom_msgs(self, _, content, buffers=None):
-        event = content.get('event', '')
-
-        if event == 'drag_start':
-            self._drag_start_handlers(self, content)
-        elif event == 'drag':
-            self._drag_handlers(self, content)
-        elif event == 'drag_end':
-            self._drag_end_handlers(self, content)
-
-        super(Label, self)._handle_custom_msgs(self, content)
-    
-    _view_name = Unicode('Label').tag(sync=True)
-    _model_name = Unicode('LabelModel').tag(sync=True)
 
 
 @register_mark('bqplot.OHLC')
