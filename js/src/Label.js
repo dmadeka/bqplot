@@ -65,6 +65,9 @@ var Label = mark.Mark.extend({
         if(rotation_scale) {
             rotation_scale.set_range([0, 180]);
         }
+        if(opacity_scale) {
+            opacity_scale.set_range([0.2, 1]);
+        }
     },
 
     set_positional_scales: function() {
@@ -90,6 +93,7 @@ var Label = mark.Mark.extend({
         // listeners for the additional scales
         var color_scale = this.scales.color,
             size_scale = this.scales.size,
+            opacity_scale = this.scales.opacity,
             rotation_scale = this.scales.rotation;
         // the following handlers are for changes in data that does not
         // impact the position of the elements
@@ -100,6 +104,12 @@ var Label = mark.Mark.extend({
             });
             color_scale.on("color_scale_range_changed",
                             this.color_scale_updated, this);
+        }
+        if (opacity_scale) {
+            this.listenTo(opacity_scale, "domain_changed", function() {
+                var animate = true;
+                this.update_default_opacities(animate);
+            });
         }
         if (size_scale) {
             this.listenTo(size_scale, "domain_changed", function() {
@@ -115,6 +125,38 @@ var Label = mark.Mark.extend({
         }
     },
 
+    update_default_opacities: function(animate) {
+        if (!this.model.dirty) {
+            var default_opacities = this.model.get("default_opacities");
+            var len_opac = default_opacities.length;
+            var animation_duration = animate === true ? this.parent.model.get("animation_duration") : 0;
+
+            // update opacity scale range?
+            var that = this;
+            this.el.selectAll(".label")
+                .transition()
+                .duration(animation_duration)
+                .style("opacity", function(d, i) {
+                    return that.get_element_opacity(d, i);
+                });
+        }
+    },
+
+    update_default_size: function(animate) {
+        this.compute_view_padding();
+        // update size scale range?
+        if (!this.model.dirty) {
+            var animation_duration = animate === true ? this.parent.model.get("animation_duration") : 0;
+            var that = this;
+            this.el.selectAll(".label")
+                .transition()
+                .duration(animation_duration)
+                .style("font-size", function(d, i) {
+                    return that.get_element_size(d);
+                });
+        }
+    },
+
     create_listeners: function() {
         Label.__super__.create_listeners.apply(this);
         this.listenTo(this.model, "change:text", this.update_text, this);
@@ -122,7 +164,13 @@ var Label = mark.Mark.extend({
         this.listenTo(this.model, "change:default_skew", this.update_default_skew, this);
         this.listenTo(this.model, "change:default_rotation", this.update_xy_position, this);
         this.listenTo(this.model, "change:default_size", this.update_default_size, this);
+        this.listenTo(this.model, "change:default_opacities", this.update_default_opacities, this);
         this.listenTo(this.model, "change:tooltip", this.create_tooltip, this);
+        this.listenTo(this.model, "data_updated", function() {
+            //animate dots on data update
+            var animate = true;
+            this.draw(animate);
+        }, this);
         this.model.on_some_change(["font_weight", "font_size", "colors",
                                    "align", "font_unit"], this.update_style, this);
         this.model.on_some_change(["x", "y", "x_offset", "y_offset",
@@ -159,7 +207,18 @@ var Label = mark.Mark.extend({
             
         this.set_drag_behavior();    
         this.update_style();
+        this.update_default_opacities(true);
         this.update_position();
+    },
+
+    get_element_color: function(data, index) {
+        var color_scale = this.scales.color;
+        var colors = this.model.get("colors");
+        var len = colors.length;
+        if(color_scale && data.color !== undefined && data.color !== null) {
+            return color_scale.scale(data.color);
+        }
+        return colors[index % len];
     },
 
     get_element_size: function(data) {
@@ -175,6 +234,16 @@ var Label = mark.Mark.extend({
         var rotation_scale = this.scales.rotation;
         return (!rotation_scale || !data.rotation) ? "rotate(" + this.model.get("rotate_angle") + ")" :
             "rotate(" + rotation_scale.scale(data.rotation) + ")";
+    },
+
+    get_element_opacity: function(data, index) {
+        var opacity_scale = this.scales.opacity;
+        var default_opacities = this.model.get("default_opacities");
+        var len = default_opacities.length;
+        if(opacity_scale && data.opacity !== undefined) {
+            return opacity_scale.scale(data.opacity);
+        }
+        return default_opacities[index % len];
     },
 
     update_position: function() {
@@ -200,16 +269,6 @@ var Label = mark.Mark.extend({
             .text(function(d, i) {
                 return texts[i];
             });
-    },
-
-    get_element_color: function(data, index) {
-        var color_scale = this.scales.color;
-        var colors = this.model.get("colors");
-        var len = colors.length;
-        if(color_scale && data.color !== undefined && data.color !== null) {
-            return color_scale.scale(data.color);
-        }
-        return colors[index % len];
     },
 
     update_style: function() {

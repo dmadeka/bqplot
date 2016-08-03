@@ -839,6 +839,8 @@ class Label(Mark):
                    rtype='Number', min_dim=1, max_dim=1)
     rotation = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
                        rtype='Number', min_dim=1, max_dim=1)
+    opacity = NdArray(None, allow_none=True).tag(sync=True, scaled=True,
+                      rtype='Number', min_dim=1, max_dim=1)
     x_offset = Int().tag(sync=True)
     y_offset = Int().tag(sync=True)
     scales_metadata = Dict({
@@ -847,6 +849,7 @@ class Label(Mark):
         'color': { 'dimension': 'color' }
     }).tag(sync=True)
     colors = List(trait=Color(default_value=None, allow_none=True), default_value=CATEGORY10).tag(sync=True, display_name='Colors')
+    default_opacities = List(trait=Float(1.0, min=0, max=1, allow_none=True)).tag(sync=True, display_name='Opacities')
     rotate_angle = Float().tag(sync=True)
     text = NdArray().tag(sync=True)
     font_size = Float(16.).tag(sync=True)
