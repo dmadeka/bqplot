@@ -67,6 +67,54 @@ var MarketMapModel = basemodel.BaseModel.extend({}, {
         tooltip_widget: null
     }),
 
+    initialize: function() {
+        MarketMapModel.__super__.initialize.apply(this, arguments);
+        this.on_some_change(["names", "groups", "display_text", "ref_data"], function() {
+            this.update_data();
+            this.trigger("data_updated");
+        }, this);
+        this.on_some_change(["color"], function() {
+            this.update_data();
+            this.trigger("color_updated");
+        });
+        this.update_data();
+    },
+
+    update_data: function() {
+        var that = this;
+        this.data = this.get_typed_field("names");
+        this.ref_data = this.get("ref_data");
+        this.group_data = this.get_typed_field("groups");
+        this.groups = _.uniq(this.group_data, true);
+        var display_text = this.get_typed_field("display_text");
+        display_text = (display_text === undefined || display_text.length === 0) ? this.data : display_text;
+
+        this.colors = this.get("colors");
+        var num_colors = this.colors.length;
+        var color_data = this.get_typed_field("color");
+        var mapped_data = this.data.map(function(d, i) {
+            return {
+                display: display_text[i],
+                name: d,
+                color: color_data[i],
+                group: that.group_data[i],
+                ref_data: (that.ref_data[i]) ? that.ref_data[i] : d
+            };
+        });
+
+        this.update_domains();
+        this.grouped_data = _.groupBy(mapped_data, function(d, i) { return that.group_data[i]; });
+
+    },
+
+    update_domains: function() {
+        var color_scale_model = this.get("scales").color;
+        var color_data = this.model.get_typed_field("color");
+        if(color_scale_model && color_data.length > 0) {
+            color_scale_model.compute_and_set_domain(color_data, this.model.id);
+        }
+    },
+
     serializers: _.extend({
         scales: { deserialize: widgets.unpack_models },
         axes: { deserialize: widgets.unpack_models },

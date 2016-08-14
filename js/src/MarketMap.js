@@ -20,10 +20,6 @@ var figure = require("./Figure");
 
 var MarketMap = figure.Figure.extend({
 
-    initialize: function() {
-        MarketMap.__super__.initialize.apply(this, arguments);
-    },
-
     remove: function() {
         this.model.off(null, null, this);
         this.svg.remove();
@@ -31,7 +27,8 @@ var MarketMap = figure.Figure.extend({
         this.tooltip_div.remove();
     },
 
-    render: function(options) {
+    render: function() {
+        MarketMap.__super__.initialize.apply(this, arguments);
         this.id = widgets.uuid();
         this.width = this.model.get("map_width");
         this.height = this.model.get("map_height");
@@ -45,9 +42,8 @@ var MarketMap = figure.Figure.extend({
         this.row_groups = this.model.get("row_groups");
         this.enable_select = this.model.get("enable_select");
 
-        this.update_data();
         // set the number of rows and columns in the map
-        this.set_area_dimensions(this.data.length);
+        this.set_area_dimensions(this.model.data.length);
 
         // Reading the properties and creating the dom elements required
         this.svg = d3.select(this.el)
@@ -153,7 +149,9 @@ var MarketMap = figure.Figure.extend({
     },
 
     create_listeners: function() {
-        this.listenTo(this.model, "change:color", this.recolor_chart, this);
+        this.listenTo(this.model, "color_updated", function() {
+            this.recolor_chart();
+        }, this);
         this.listenTo(this.model, "change:colors", this.colors_updated, this);
         this.listenTo(this.model, "change:show_groups", this.show_groups, this);
         this.listenTo(this.model, "change:selected_stroke", this.update_selected_stroke, this);
@@ -164,8 +162,10 @@ var MarketMap = figure.Figure.extend({
             this.clear_selected();
             this.apply_selected();
         }, this);
-        this.model.on_some_change(["names", "groups", "ref_data"], function() {
-            this.update_data();
+        this.listenTo(this.model, "data_updated", function() {
+            //animate dots on data update
+            var animate = true;
+            this.data_updated();
             this.compute_dimensions_and_draw();
         }, this);
         this.listenTo(this.model, "change:rows", function(model, value) {
@@ -239,49 +239,18 @@ var MarketMap = figure.Figure.extend({
         this.trigger("margin_updated");
     },
 
-    update_data: function() {
-        var that = this;
-        this.data = this.model.get_typed_field("names");
-        this.ref_data = this.model.get("ref_data");
-        this.group_data = this.model.get_typed_field("groups");
-        this.groups = _.uniq(this.group_data, true);
-        var display_text = this.model.get_typed_field("display_text");
-        display_text = (display_text === undefined || display_text.length === 0) ? this.data : display_text;
-
-        this.colors = this.model.get("colors");
-        var num_colors = this.colors.length;
+    data_updated: function() {
         this.colors_map = function(d) { return that.get_color(d, num_colors);};
-        var color_data = this.model.get_typed_field("color");
-        var mapped_data = this.data.map(function(d, i) {
-            return {
-                display: display_text[i],
-                name: d,
-                color: color_data[i],
-                group: that.group_data[i],
-                ref_data: that.ref_data[i]
-            };
-        });
-
-        this.update_domains();
-        this.grouped_data = _.groupBy(mapped_data, function(d, i) { return that.group_data[i]; });
         this.groups = [];
         this.running_sums = [];
         this.running_sums[0] = 0;
         var count = 0;
-        for (var key in this.grouped_data) {
+        for (var key in this.model.grouped_data) {
             this.groups.push(key);
-            count += this.grouped_data[key].length;
+            count += this.model.grouped_data[key].length;
             this.running_sums.push(count);
         }
         this.running_sums.pop();
-    },
-
-    update_domains: function() {
-        var color_scale_model = this.model.get("scales").color;
-        var color_data = this.model.get_typed_field("color");
-        if(color_scale_model && color_data.length > 0) {
-            color_scale_model.compute_and_set_domain(color_data, this.model.id);
-        }
     },
 
     set_area_dimensions: function(num_items) {
@@ -328,7 +297,7 @@ var MarketMap = figure.Figure.extend({
     },
 
     compute_dimensions_and_draw: function() {
-        this.set_area_dimensions(this.data.length);
+        this.set_area_dimensions(this.model.data.length);
         this.update_plotarea_dimensions();
         this.draw_map();
 
@@ -482,7 +451,6 @@ var MarketMap = figure.Figure.extend({
 
     recolor_chart: function() {
         var that = this;
-        this.update_data();
         this.rect_groups = this.fig.selectAll(".element_group")
             .data(this.groups);
         var color_scale = this.scales.color;
